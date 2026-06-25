@@ -1,5 +1,7 @@
 # Plan 001 — X (Twitter) 抓取 MVP
 
+**Status (2026-06-25)**: T1–T11 complete. MVP shipped: CLI + FastAPI + LightSwarm router + X specialist agent + Scrapling StealthyFetcher crawler. Test suite: 17 passed. Real X crawling still requires a valid browser cookie in `.env` and a running Ollama — both unverified end-to-end here.
+
 ## 目标
 
 搭建 omnispy 的最小可运行骨架，跑通一条端到端链路：
