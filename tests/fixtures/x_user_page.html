@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>@testuser / X</title></head>
+<body>
+  <main>
+    <article data-testid="tweet">
+      <div data-testid="User-Name">
+        <span>Test User</span>
+        <span>@testuser</span>
+      </div>
+      <div data-testid="tweetText">Hello, world! This is tweet one.</div>
+      <a href="/testuser/status/1234567890">10:00 AM · Jun 25, 2026</a>
+      <a href="/testuser/status/1234567890/like">Like</a>
+      <time datetime="2026-06-25T10:00:00.000Z"></time>
+    </article>
+
+    <article data-testid="tweet">
+      <div data-testid="User-Name">
+        <span>Test User</span>
+        <span>@testuser</span>
+      </div>
+      <div data-testid="tweetText">Second tweet with <span>inline</span> markup.</div>
+      <a href="/testuser/status/1234567891">11:00 AM · Jun 25, 2026</a>
+      <time datetime="2026-06-25T11:00:00.000Z"></time>
+    </article>
+
+    <!-- Duplicate id (retweet of the original) — must be skipped. -->
+    <article data-testid="tweet">
+      <div data-testid="User-Name">Other</div>
+      <div data-testid="tweetText">Should be skipped (duplicate id)</div>
+      <a href="/testuser/status/1234567890">dup</a>
+      <time datetime="2026-06-25T10:00:00.000Z"></time>
+    </article>
+  </main>
+</body>
+</html>

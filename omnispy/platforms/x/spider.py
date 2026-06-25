@@ -70,9 +70,16 @@ def _extract_tweet_id(link_elements) -> str | None:
 
 
 def _first_text(card, selector: str) -> str | None:
-    """Return concatenated text of the first match, or None."""
-    matches = card.css(selector + "::text")
-    return matches.get() if matches else None
+    """Return whitespace-normalized text under the first match, or None.
+
+    Recurses into nested elements so blocks like User-Name (which contains
+    display-name and handle spans) yield a single concatenated string.
+    """
+    matches = card.css(selector)
+    if not matches:
+        return None
+    parts = [t.strip() for t in matches[0].css("::text").getall() if t.strip()]
+    return " ".join(parts) if parts else None
 
 
 def _first_attr(card, selector: str, attr: str) -> str | None:
