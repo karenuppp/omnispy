@@ -8,7 +8,7 @@ the delegation hop.
 
 from LightAgent import LightAgent, LightSwarm
 
-from omnispy.llm.ollama import ollama_provider
+from omnispy.llm.provider import provider
 
 from .x_agent import build_x_agent
 
@@ -35,7 +35,7 @@ support it and list the platforms that are available.
 
 def build_router() -> LightSwarm:
     """Construct the swarm with the router + all specialist agents registered."""
-    router = LightAgent(name=ROUTER_NAME, role=ROUTER_ROLE, **ollama_provider())
+    router = LightAgent(name=ROUTER_NAME, role=ROUTER_ROLE, **provider())
     swarm = LightSwarm()
     swarm.register_agent(router, build_x_agent())
     return swarm

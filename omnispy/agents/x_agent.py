@@ -2,7 +2,7 @@
 
 from LightAgent import LightAgent
 
-from omnispy.llm.ollama import ollama_provider
+from omnispy.llm.provider import provider
 from omnispy.platforms.x.tools import fetch_x_user_tweets
 
 
@@ -20,5 +20,5 @@ def build_x_agent() -> LightAgent:
         name="x_agent",
         role=X_AGENT_ROLE,
         tools=[fetch_x_user_tweets],
-        **ollama_provider(),
+        **provider(),
     )

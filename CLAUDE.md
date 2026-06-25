@@ -22,7 +22,7 @@ omnispy/
 ├── config.py                # pydantic-settings, reads .env
 ├── __main__.py              # CLI entry (typer)
 ├── api.py                   # FastAPI app, POST /query
-├── llm/ollama.py            # constructs the OpenAI-compat provider dict for Ollama
+├── llm/provider.py          # builds the OpenAI-compat provider dict (LM Studio / Ollama / vLLM / etc.)
 ├── platforms/x/             # X-specific crawl + tool code
 │   ├── spider.py            # StealthyFetcher wrapper, returns list[dict]
 │   ├── selectors.py         # X DOM selectors — isolated because X breaks often
@@ -56,7 +56,7 @@ Use [uv](https://docs.astral.sh/uv/). All commands assume project root.
 - **Python ≥ 3.10** — Scrapling requires it.
 - **`scrapling[all]`** — the bare `pip install scrapling` ships only the parser. You need `[all]` (or at minimum `[fetchers]`) for `StealthyFetcher` and the browser binaries. After `uv sync`, run `uv run scrapling install` once.
 - **`lightagent>=0.6.5,<0.9`** — pinned below 0.9 because `LightSwarm` and `SharedMemoryPool` are still iterating fast in v0.8.x/v0.9.x dev. When bumping, read the release notes; `LightSwarm.register_agent` and the `swarm.run(agent=...)` signature have changed across versions.
-- **Ollama** — local LLM via OpenAI-compatible `/v1` endpoint. Make sure `ollama serve` is running and the model (default `qwen2.5:7b`) is pulled before launching omnispy.
+- **LM Studio** — local LLM via OpenAI-compatible `/v1` endpoint. Make sure `gemma-4-e4b` is loaded and the "Local Server" is enabled in LM Studio's Developer tab (default port 1234) before launching omnispy. Any other OpenAI-compatible backend (Ollama, vLLM, llama.cpp) works the same way — just adjust `LLM_BASE_URL` and `LLM_MODEL`.
 - **X cookie** — paste a full browser-exported cookie string into `X_COOKIE` in `.env`. `StealthySession(cookies_str=...)` expects `"key=value; key=value"`. Don't commit `.env`.
 
 ## X selectors are a maintenance hotspot

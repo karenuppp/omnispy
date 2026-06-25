@@ -11,7 +11,7 @@ Current scope (MVP): X (Twitter) user timeline scraping via `python -m omnispy "
 
 MVP skeleton complete (plan `001-x-mvp` done). CLI + FastAPI + crawler + agent
 all wired up. Real X crawling requires a valid browser cookie in `.env` and a
-running Ollama; the test suite uses offline fixtures and stubbed agents.
+running LM Studio; the test suite uses offline fixtures and stubbed agents.
 
 What's done:
 
@@ -29,8 +29,9 @@ Prerequisites:
 
 - Python ≥ 3.10
 - [uv](https://docs.astral.sh/uv/) (dependency manager)
-- [Ollama](https://ollama.com/) running locally with an OpenAI-compatible model pulled
-  (default: `qwen2.5:7b`)
+- [LM Studio](https://lmstudio.ai/) running locally on :1234 with `gemma-4-e4b` loaded
+  (enable "Local Server" in the LM Studio "Developer" tab to expose the
+  OpenAI-compatible `/v1` endpoint)
 - An X (Twitter) browser session — export cookies as a single string and put in `.env`
 
 ```bash

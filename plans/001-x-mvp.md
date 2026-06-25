@@ -1,6 +1,8 @@
 # Plan 001 — X (Twitter) 抓取 MVP
 
-**Status (2026-06-25)**: T1–T11 complete. MVP shipped: CLI + FastAPI + LightSwarm router + X specialist agent + Scrapling StealthyFetcher crawler. Test suite: 17 passed. Real X crawling still requires a valid browser cookie in `.env` and a running Ollama — both unverified end-to-end here.
+**Status (2026-06-25)**: T1–T11 complete. MVP shipped: CLI + FastAPI + LightSwarm router + X specialist agent + Scrapling StealthyFetcher crawler. Test suite: 17 passed. Real X crawling still requires a valid browser cookie in `.env` and a running LM Studio — both unverified end-to-end here.
+
+**Post-MVP rename (2026-06-25)**: LLM backend switched from Ollama → LM Studio (port 1234, model `gemma-4-e4b`). Config fields renamed `ollama_*` → `llm_*`, env vars `OLLAMA_*` → `LLM_*`, module `omnispy/llm/ollama.py` → `omnispy/llm/provider.py` (function `ollama_provider()` → `provider()`). Below still shows the original design for context.
 
 ## 目标
 

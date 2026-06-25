@@ -16,10 +16,10 @@ class Settings(BaseSettings):
     # X (Twitter)
     x_cookie: str = ""
 
-    # LLM (Ollama, OpenAI-compatible)
-    ollama_base_url: str = "http://localhost:11434/v1"
-    ollama_model: str = "qwen2.5:7b"
-    ollama_api_key: str = "ollama"
+    # LLM (LM Studio, OpenAI-compatible endpoint on :1234)
+    llm_base_url: str = "http://localhost:1234/v1"
+    llm_model: str = "gemma-4-e4b"
+    llm_api_key: str = "lmstudio"
 
     # HTTP server
     http_host: str = "127.0.0.1"

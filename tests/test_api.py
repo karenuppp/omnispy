@@ -1,7 +1,7 @@
 """Tests for the FastAPI /query endpoint.
 
 Replaces `omnispy.agents.router.run` with a stub so the test doesn't need
-a running Ollama instance.
+a running LM Studio instance.
 """
 
 from fastapi.testclient import TestClient
