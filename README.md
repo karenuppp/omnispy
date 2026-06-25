@@ -9,7 +9,19 @@ Current scope (MVP): X (Twitter) user timeline scraping via `python -m omnispy "
 
 ## Status
 
-Active development. See [`plans/001-x-mvp.md`](plans/001-x-mvp.md) for the current implementation plan.
+MVP skeleton complete (plan `001-x-mvp` done). CLI + FastAPI + crawler + agent
+all wired up. Real X crawling requires a valid browser cookie in `.env` and a
+running Ollama; the test suite uses offline fixtures and stubbed agents.
+
+What's done:
+
+- `platforms/x/` — StealthyFetcher-based scraper + CSS selectors + LightAgent tool wrapper
+- `agents/` — `LightSwarm` router + `x_agent` specialist
+- `omnispy.api` — `POST /query` + `GET /healthz`
+- `python -m omnispy "<query>"` — CLI entry
+
+What's not (deliberately deferred, see plan for details): memory layer, login
+rotation, other platforms, Docker deployment.
 
 ## Setup
 
