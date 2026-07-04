@@ -47,6 +47,8 @@ def _parse_cookies(cookie_str: str) -> list[dict]:
             })
     return out
 
+from datetime import datetime
+
 from .selectors import (
     TWEET_ARTICLE_V1,
     TWEET_ARTICLE_V2,
@@ -124,7 +126,7 @@ def search_tweets(
     if not keywords and not from_users and not query:
         return []
 
-    q = _build_search_query(keywords=keywords, from_users=from_users, raw=query, since=since, until=until)
+    q = _build_search_query(keywords=keywords, from_users=from_users, raw=query)
     sort_param = "top" if sort == "top" else "live"
     url = f"https://x.com/search?q={quote(q)}&f={sort_param}&src=typed_query"
 
@@ -138,15 +140,58 @@ def search_tweets(
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(_fetch_sync, url, limit)
-            return future.result()
+            result = future.result()
+    else:
+        result = _fetch_sync(url, limit)
 
-    return _fetch_sync(url, limit)
+    if since or until:
+        result = _filter_tweets_by_time(result, since, until)
+    return result[:limit]
 
 
 def _fetch_sync(url: str, limit: int) -> list[dict]:
     with StealthySession(headless=True, cookies=_parse_cookies(settings.x_cookie)) as session:
-        page = session.fetch(url, network_idle=True)
+        page = session.fetch(url, network_idle=False, timeout=30000, disable_resources=True)
     return _parse_tweets(page, limit)
+
+
+def _filter_tweets_by_time(
+    tweets: list[dict],
+    since: str | None,
+    until: str | None,
+) -> list[dict]:
+    """Filter a list of tweet dicts by ISO datetime (v1 ``time`` field).
+
+    Tweets whose ``time`` field is not an ISO datetime (e.g. relative strings
+    like "9h" from the v2 DOM variant) are included as-is — they can't be
+    reliably compared.  This is a best-effort filter.
+    """
+    if not tweets:
+        return tweets
+
+    since_date = datetime.strptime(since, "%Y-%m-%d").date() if since else None
+    until_date = datetime.strptime(until, "%Y-%m-%d").date() if until else None
+
+    out: list[dict] = []
+    for t in tweets:
+        ts = t.get("time")
+        if not ts:
+            out.append(t)
+            continue
+
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            out.append(t)  # relative time, can't compare
+            continue
+
+        if since_date and dt.date() < since_date:
+            continue
+        if until_date and dt.date() > until_date:
+            continue
+        out.append(t)
+
+    return out
 
 
 # ---------------------------------------------------------------------------

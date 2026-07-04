@@ -104,24 +104,68 @@ def test_search_query_all_empty():
     assert _build_search_query() == ""
 
 
-def test_search_query_with_since():
-    q = _build_search_query(keywords=["香港"], since="2026-06-01")
-    assert q == '香港 since:2026-06-01'
+# ---------------------------------------------------------------------------
+# _filter_tweets_by_time
+# ---------------------------------------------------------------------------
 
 
-def test_search_query_with_since_until():
-    q = _build_search_query(keywords=["香港"], since="2026-06-01", until="2026-06-30")
-    assert q == '香港 since:2026-06-01 until:2026-06-30'
+def test_filter_by_since_only():
+    from omnispy.platforms.x.spider import _filter_tweets_by_time
+
+    tweets = [
+        {"id": "1", "time": "2026-06-15T12:00:00.000Z"},
+        {"id": "2", "time": "2026-05-01T12:00:00.000Z"},
+        {"id": "3", "time": "2026-07-01T12:00:00.000Z"},
+    ]
+    result = _filter_tweets_by_time(tweets, since="2026-06-01", until=None)
+    assert [t["id"] for t in result] == ["1", "3"]
 
 
-def test_search_query_with_until_only():
-    q = _build_search_query(keywords=["香港"], until="2026-06-30")
-    assert q == '香港 until:2026-06-30'
+def test_filter_by_until_only():
+    from omnispy.platforms.x.spider import _filter_tweets_by_time
+
+    tweets = [
+        {"id": "1", "time": "2026-06-15T12:00:00.000Z"},
+        {"id": "2", "time": "2026-05-01T12:00:00.000Z"},
+        {"id": "3", "time": "2026-07-01T12:00:00.000Z"},
+    ]
+    result = _filter_tweets_by_time(tweets, since=None, until="2026-06-30")
+    assert [t["id"] for t in result] == ["1", "2"]
 
 
-def test_search_query_since_until_no_keywords():
-    q = _build_search_query(since="2026-06-01", until="2026-06-30")
-    assert q == 'since:2026-06-01 until:2026-06-30'
+def test_filter_by_range():
+    from omnispy.platforms.x.spider import _filter_tweets_by_time
+
+    tweets = [
+        {"id": "1", "time": "2026-06-15T12:00:00.000Z"},
+        {"id": "2", "time": "2026-05-01T12:00:00.000Z"},
+        {"id": "3", "time": "2026-07-01T12:00:00.000Z"},
+        {"id": "4", "time": None},
+    ]
+    result = _filter_tweets_by_time(tweets, since="2026-06-01", until="2026-06-30")
+    # tweet 4 has no time — included as best-effort
+    assert [t["id"] for t in result] == ["1", "4"]
+
+
+def test_filter_skips_relative_time():
+    from omnispy.platforms.x.spider import _filter_tweets_by_time
+
+    tweets = [
+        {"id": "1", "time": "9h"},
+        {"id": "2", "time": "Jun 25"},
+        {"id": "3", "time": "2026-06-15T12:00:00.000Z"},
+    ]
+    result = _filter_tweets_by_time(tweets, since="2026-06-01", until="2026-06-30")
+    # relative times can't be compared — included as-is
+    assert [t["id"] for t in result] == ["1", "2", "3"]
+
+
+def test_filter_empty_list():
+    from omnispy.platforms.x.spider import _filter_tweets_by_time
+
+    assert _filter_tweets_by_time([], since="2026-06-01", until=None) == []
+    assert _filter_tweets_by_time([], since=None, until="2026-06-30") == []
+    assert _filter_tweets_by_time([], since=None, until=None) == []
 
 
 # ---------------------------------------------------------------------------
@@ -154,3 +198,27 @@ def test_parse_search_results():
 def test_parse_search_results_respects_limit():
     page = _search_page()
     assert len(_parse_tweets(page, limit=2)) == 2
+
+
+# ---------------------------------------------------------------------------
+# _build_search_query with since/until
+# ---------------------------------------------------------------------------
+
+
+def test_search_query_with_since():
+    q = _build_search_query(keywords=["香港"], since="2026-07-01")
+    assert q == "香港 since:2026-07-01"
+
+
+def test_search_query_with_since_until():
+    q = _build_search_query(
+        keywords=["香港"],
+        since="2026-07-01",
+        until="2026-07-05",
+    )
+    assert q == "香港 since:2026-07-01 until:2026-07-05"
+
+
+def test_search_query_since_until_no_keywords():
+    q = _build_search_query(since="2026-07-01", until="2026-07-05")
+    assert q == "since:2026-07-01 until:2026-07-05"
