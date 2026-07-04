@@ -126,10 +126,38 @@ def search_tweets(
     if not keywords and not from_users and not query:
         return []
 
-    q = _build_search_query(keywords=keywords, from_users=from_users, raw=query)
+    q = _build_search_query(
+        keywords=keywords,
+        from_users=from_users,
+        raw=query,
+        since=since,
+        until=until,
+    )
     sort_param = "top" if sort == "top" else "live"
     url = f"https://x.com/search?q={quote(q)}&f={sort_param}&src=typed_query"
 
+    result = _do_fetch(url, limit)
+
+    # Fallback: server-side returned empty -> retry without date operators
+    # and client-filter instead.
+    if not result and (since or until):
+        q_fallback = _build_search_query(
+            keywords=keywords,
+            from_users=from_users,
+            raw=query,
+            since=None,
+            until=None,
+        )
+        url_fallback = f"https://x.com/search?q={quote(q_fallback)}&f={sort_param}&src=typed_query"
+        result = _do_fetch(url_fallback, limit)
+        result = _filter_tweets_by_time(result, since, until)
+
+    return result[:limit]
+
+
+def _do_fetch(url: str, limit: int) -> list[dict]:
+    """Internal: run the fetch with StealthySession, handling asyncio loop
+    detection. Returns parsed tweet list (may be empty)."""
     try:
         running_loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -140,18 +168,14 @@ def search_tweets(
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(_fetch_sync, url, limit)
-            result = future.result()
-    else:
-        result = _fetch_sync(url, limit)
+            return future.result()
 
-    if since or until:
-        result = _filter_tweets_by_time(result, since, until)
-    return result[:limit]
+    return _fetch_sync(url, limit)
 
 
 def _fetch_sync(url: str, limit: int) -> list[dict]:
     with StealthySession(headless=True, cookies=_parse_cookies(settings.x_cookie)) as session:
-        page = session.fetch(url, network_idle=False, timeout=30000, disable_resources=True)
+        page = session.fetch(url, network_idle=True, timeout=30000, disable_resources=True)
     return _parse_tweets(page, limit)
 
 
@@ -187,7 +211,7 @@ def _filter_tweets_by_time(
 
         if since_date and dt.date() < since_date:
             continue
-        if until_date and dt.date() > until_date:
+        if until_date and dt.date() >= until_date:
             continue
         out.append(t)
 

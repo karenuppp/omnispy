@@ -222,3 +222,95 @@ def test_search_query_with_since_until():
 def test_search_query_since_until_no_keywords():
     q = _build_search_query(since="2026-07-01", until="2026-07-05")
     assert q == "since:2026-07-01 until:2026-07-05"
+
+
+# ---------------------------------------------------------------------------
+# search_tweets fallback (server-side -> client-side)
+# ---------------------------------------------------------------------------
+
+
+def test_search_fallback_empty_results(monkeypatch):
+    """When server-side returns empty, search_tweets retries without
+    date operators and client-filters instead."""
+    from urllib.parse import unquote
+
+    from omnispy.platforms.x.spider import search_tweets
+
+    calls = []
+
+    def fake_fetch(url, limit):
+        calls.append(url)
+        # First call (with since): return empty
+        # Second call (without since): return a tweet that *would* match
+        if "since:" in unquote(url):
+            return []
+        return [
+            {
+                "id": "99",
+                "text": "yesterday tweet",
+                "time": "2026-07-04T12:00:00.000Z",
+                "author": "User",
+            },
+            {
+                "id": "100",
+                "text": "today tweet",
+                "time": "2026-07-05T12:00:00.000Z",
+                "author": "User",
+            },
+        ]
+
+    monkeypatch.setattr(
+        "omnispy.platforms.x.spider._fetch_sync",
+        fake_fetch,
+    )
+
+    result = search_tweets(
+        keywords=["test"],
+        since="2026-07-04",
+        until="2026-07-05",
+        limit=10,
+    )
+
+    # Should have called fetch twice
+    assert len(calls) == 2
+    assert "since:" in unquote(calls[0])
+    assert "since:" not in unquote(calls[1])
+    # Only the matching tweet should remain
+    assert len(result) == 1
+    assert result[0]["id"] == "99"
+
+
+def test_search_no_fallback_when_results_exist(monkeypatch):
+    """When server-side returns results, no retry happens."""
+    from omnispy.platforms.x.spider import search_tweets
+
+    calls = []
+
+    def fake_fetch(url, limit):
+        calls.append(url)
+        return [{"id": "1", "text": "hot tweet", "time": "2026-07-04T12:00:00.000Z", "author": "U"}]
+
+    monkeypatch.setattr("omnispy.platforms.x.spider._fetch_sync", fake_fetch)
+
+    result = search_tweets(keywords=["test"], since="2026-07-04", limit=10)
+
+    assert len(calls) == 1  # only one fetch
+    assert len(result) == 1
+
+
+def test_search_no_fallback_without_since_until(monkeypatch):
+    """When no date filters, no retry happens even if empty."""
+    from omnispy.platforms.x.spider import search_tweets
+
+    calls = []
+
+    def fake_fetch(url, limit):
+        calls.append(url)
+        return []
+
+    monkeypatch.setattr("omnispy.platforms.x.spider._fetch_sync", fake_fetch)
+
+    result = search_tweets(keywords=["test"], limit=10)
+
+    assert len(calls) == 1  # only one fetch, no retry
+    assert len(result) == 0
