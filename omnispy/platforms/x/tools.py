@@ -71,25 +71,15 @@ def search_x_tweets(
     Returns:
         List of dicts with keys: id, text, time, author.
     """
-    import sys
-    print(f"[DEBUG search_x_tweets] keywords={keywords!r}, from_users={from_users!r}, query={query!r}, sort={sort!r}, limit={limit!r}", file=sys.stderr)
-    try:
-        result = _search_tweets(
-            keywords=keywords,
-            from_users=from_users,
-            query=query,
-            sort=sort,
-            limit=limit,
-            since=since,
-            until=until,
-        )
-        print(f"[DEBUG search_x_tweets] SUCCESS: {len(result)} results", file=sys.stderr)
-        return result
-    except Exception as e:
-        import traceback
-        print(f"[DEBUG search_x_tweets] ERROR: {e}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
-        raise
+    return _search_tweets(
+        keywords=keywords,
+        from_users=from_users,
+        query=query,
+        sort=sort,
+        limit=limit,
+        since=since,
+        until=until,
+    )
 
 
 search_x_tweets.tool_info = {
