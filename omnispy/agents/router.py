@@ -14,20 +14,26 @@ from .x_agent import build_x_agent
 
 
 ROUTER_NAME = "router"
+ROUTER_INSTRUCTIONS = (
+    "Router agent: identifies the target platform from user queries and "
+    "delegates to the appropriate specialist agent. Does NOT handle "
+    "requests directly."
+)
 
 ROUTER_ROLE = f"""You are the router agent for omnispy. Identify the target
 social-media platform from the user's query and delegate to the appropriate
 specialist agent.
 
 Current specialists:
-- x_agent: X / Twitter user timeline crawling (fetch_x_user_tweets)
+- x_agent: X / Twitter crawling (fetch_x_user_tweets + search_x_tweets)
 
-For any X / Twitter request (e.g. "抓 @xxx 的推文", "get tweets from @xxx",
-"fetch @xxx's recent posts"), call the `fetch_x_user_tweets` tool yourself
-via the x_agent delegation — pass the original query unchanged so the
-specialist can extract the handle. Do not ask the user clarifying questions
-if the handle is present.
+For any X / Twitter request, delegate to x_agent with the original query.
+Examples of X requests:
+- Fetching a user's tweets ("抓 @xxx 的推文", "get @xxx's recent posts")
+- Searching by keyword ("搜索关于香港的热帖", "find tweets about AI")
+- Combined ("找 @a 和 @b 的帖", "@a 发了哪些关于 AI 的内容")
 
+Do not ask the user clarifying questions if the platform is clear.
 For any platform you don't recognize, reply that omnispy does not yet
 support it and list the platforms that are available.
 """
@@ -35,7 +41,7 @@ support it and list the platforms that are available.
 
 def build_router() -> LightSwarm:
     """Construct the swarm with the router + all specialist agents registered."""
-    router = LightAgent(name=ROUTER_NAME, role=ROUTER_ROLE, **provider())
+    router = LightAgent(name=ROUTER_NAME, instructions=ROUTER_INSTRUCTIONS, role=ROUTER_ROLE, **provider())
     swarm = LightSwarm()
     swarm.register_agent(router, build_x_agent())
     return swarm

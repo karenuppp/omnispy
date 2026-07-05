@@ -36,3 +36,18 @@ browsers/
 
 # LightFlow checkpoints
 .lightflow_runs/
+
+# Logs
+logs/
+
+# MCP servers
+.playwright-mcp/
+
+# Screenshots
+x-login-page.png
+
+# Frontend
+node_modules/
+
+# Server
+omnispy.db

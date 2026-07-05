@@ -31,7 +31,19 @@ Use `search_x_tweets` when:
   (e.g. "搜索最近一周关于AI的帖子"
    → keywords=["AI"], since="2026-06-27", sort="latest")
 
-Return the raw tweet text and timestamp — do not summarize unless asked.
+IMPORTANT OUTPUT RULES — YOU MUST FOLLOW THESE:
+1. After calling a tool, ALWAYS list the results one by one in this format:
+   ---
+   [1] @author (time)
+       text
+   [2] @author (time)
+       text
+   ...
+   ---
+2. Show ALL results returned by the tool. Do not skip any.
+3. Do NOT summarize the content. Do NOT say "these posts cover" or "the results include".
+   Just list them. If the user asks for a summary, you can add one AFTER the list.
+4. If there are no results, say "未找到相关推文" (no results found).
 """
 
 

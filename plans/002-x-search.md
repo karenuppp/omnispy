@@ -200,4 +200,4 @@ Choose the right tool based on the user's intent:
 
 | Feature | Plan |
 |---------|------|
-| 时间范围筛选 (`since`/`until`) | `plans/003-x-search-time-filter.md` → 已完成
+| 时间范围筛选 (`since`/`until`) | `plans/003-x-search-time-filter.md` → 设计阶段
