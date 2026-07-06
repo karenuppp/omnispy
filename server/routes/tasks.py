@@ -5,6 +5,21 @@ from pydantic import BaseModel, Field
 
 from server.db import get_db
 from server.service import run_task
+from server.scheduler import get_scheduler
+
+
+def _reload_scheduler():
+    """Reload all enabled tasks into APScheduler after CRUD mutations."""
+    mgr = get_scheduler()
+    if not mgr.scheduler:
+        return
+    db = get_db()
+    tasks, _ = db.list_tasks(page=1, size=9999)
+
+    def _run(task_id: int):
+        run_task(task_id, db=get_db())
+
+    mgr.reload_all(tasks, _run)
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -38,6 +53,7 @@ def list_tasks(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100)):
 def create_task(body: TaskCreate):
     db = get_db()
     task = db.create_task(body.model_dump())
+    _reload_scheduler()
     return task
 
 
@@ -57,6 +73,7 @@ def update_task(task_id: int, body: TaskUpdate):
     task = db.update_task(task_id, data)
     if not task:
         raise HTTPException(404, "Task not found")
+    _reload_scheduler()
     return task
 
 
@@ -65,6 +82,7 @@ def delete_task(task_id: int):
     db = get_db()
     if not db.delete_task(task_id):
         raise HTTPException(404, "Task not found")
+    _reload_scheduler()
     return {"ok": True}
 
 
@@ -74,6 +92,7 @@ def toggle_task(task_id: int):
     task = db.toggle_task(task_id)
     if not task:
         raise HTTPException(404, "Task not found")
+    _reload_scheduler()
     return task
 
 
