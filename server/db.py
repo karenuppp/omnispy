@@ -46,7 +46,8 @@ class Database:
                 status       TEXT NOT NULL CHECK(status IN ('running','success','failed')),
                 started_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
                 finished_at  TEXT,
-                error_msg    TEXT DEFAULT ''
+                error_msg    TEXT DEFAULT '',
+                tweet_count  INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS tweets (
@@ -71,6 +72,11 @@ class Database:
                 created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
             );
         """)
+        # Migration: add tweet_count column to existing task_runs tables
+        try:
+            self._conn.execute("ALTER TABLE task_runs ADD COLUMN tweet_count INTEGER DEFAULT 0")
+        except Exception:
+            pass  # column already exists
 
     # ---- Task CRUD ----
 
@@ -135,10 +141,10 @@ class Database:
         self._conn.commit()
         return cur.lastrowid
 
-    def finish_run(self, run_id: int, status: str, error_msg: str = ""):
+    def finish_run(self, run_id: int, status: str, error_msg: str = "", tweet_count: int = 0):
         self._conn.execute(
-            "UPDATE task_runs SET status=?, finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'), error_msg=? WHERE id=?",
-            (status, error_msg, run_id),
+            "UPDATE task_runs SET status=?, finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'), error_msg=?, tweet_count=? WHERE id=?",
+            (status, error_msg, tweet_count, run_id),
         )
         self._conn.commit()
 

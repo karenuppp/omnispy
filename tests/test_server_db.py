@@ -121,3 +121,19 @@ class TestSearchLog:
         db.log_search("user", "", "elonmusk", 3)
         stats = db.get_stats()
         assert stats["total_tasks"] >= 0  # just ensures it runs
+
+
+def test_finish_run_records_tweet_count():
+    db = Database(":memory:")
+    db.connect()
+
+    task = db.create_task({"name": "test", "type": "keyword", "keywords": "AI", "schedule": "0 */6 * * *"})
+    run_id = db.create_run(task["id"])
+
+    db.finish_run(run_id, "success", tweet_count=42)
+    run = db._conn.execute("SELECT * FROM task_runs WHERE id = ?", (run_id,)).fetchone()
+    assert run["tweet_count"] == 42
+    assert run["status"] == "success"
+    assert run["finished_at"] is not None
+
+    db.close()
