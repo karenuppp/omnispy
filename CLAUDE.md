@@ -13,7 +13,7 @@ Current scope: X (Twitter) user timeline scraping only. Other platforms (小红�
 
 ## Current plan
 
-The active implementation plan is [`plans/001-x-mvp.md`](plans/001-x-mvp.md). Read it first when picking up work. Don't start a new task without checking the plan against what's already done.
+The active implementation plan is [`plans/002-x-search.md`](plans/002-x-search.md) and [`docs/superpowers/plans/2026-07-08-mvp-multi-route-search.md`](docs/superpowers/plans/2026-07-08-mvp-multi-route-search.md). Read the active plan first when picking up work. Don't start a new task without checking the plan against what's already done.
 
 ## Layout
 
@@ -31,8 +31,22 @@ omnispy/
     ├── x_agent.py           # builds the x_agent LightAgent
     └── router.py            # builds the LightSwarm, registration only
 tests/
-└── fixtures/                # offline HTML snapshots for selector tests
+├── fixtures/                # offline HTML snapshots for selector tests
+└── ...                      # test_server_*.py for server tests
 plans/                       # implementation plans, one per milestone
+server/                      # Vue 3 + FastAPI production server
+├── app.py                   # FastAPI app + lifespan (DB + APScheduler)
+├── db.py                    # SQLite CRUD (tasks, runs, tweets, logs)
+├── service.py               # multi-route search, merge dedup
+├── scheduler.py             # APScheduler with SQLiteJobStore
+├── routes/                  # FastAPI route handlers
+│   ├── tasks.py             # Task CRUD + toggle + manual run
+│   ├── search.py            # Manual search endpoint
+│   └── results.py           # Query runs, tweets, stats
+└── frontend/                # Vue 3 + Naive UI + TypeScript
+    └── src/
+        ├── views/           # 4 pages: TaskList, TaskForm, TaskDetail, ManualSearch
+        └── api/             # Axios API client
 ```
 
 **Layering rule**: `platforms/*/spider.py` must NOT import LightAgent. Keep the crawl layer testable without an LLM in the loop.
@@ -49,7 +63,10 @@ Use [uv](https://docs.astral.sh/uv/). All commands assume project root.
 | Run one test file | `uv run pytest tests/test_x_spider.py` |
 | Run by name | `uv run pytest -k selectors` |
 | CLI smoke test | `uv run python -m omnispy "抓 @elonmusk 最近 5 条推文"` |
-| Start API server | `uv run uvicorn omnispy.api:app --reload --port 8000` |
+| Start CLI API server | `uv run uvicorn omnispy.api:app --reload --port 8000` |
+| Start server + frontend | `uv run uvicorn server.app:app --port 8000` |
+| Build frontend | `cd server/frontend && npm run build` |
+| Run server tests | `uv run pytest tests/test_server_*.py -v` |
 
 ## Stack notes
 
@@ -72,8 +89,7 @@ X changes its DOM frequently. The CSS selectors live in `platforms/x/selectors.p
 
 - Memory / long-term user prefs (deliberately deferred — no `mem0` integration yet)
 - Login / Cookie rotation / refresh
-- Search, topics, likes (only `fetch_x_user_tweets` is implemented)
-- Other platforms
-- Production deployment (Docker, k8s)
+- Other platforms (小红书, 微博, etc.)
+- Docker / k8s deployment
 
 Do not start any of these without a new plan in `plans/`.
