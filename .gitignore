@@ -51,3 +51,9 @@ node_modules/
 
 # Server
 omnispy.db
+
+# Output data
+*.json
+
+# Reference projects
+V2.1/

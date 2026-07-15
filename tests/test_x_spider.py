@@ -238,7 +238,7 @@ def test_search_fallback_empty_results(monkeypatch):
 
     calls = []
 
-    def fake_fetch(url, limit):
+    def fake_fetch(url, limit, scroll_times=0):
         calls.append(url)
         # First call (with since): return empty
         # Second call (without since): return a tweet that *would* match
@@ -286,7 +286,7 @@ def test_search_no_fallback_when_results_exist(monkeypatch):
 
     calls = []
 
-    def fake_fetch(url, limit):
+    def fake_fetch(url, limit, scroll_times=0):
         calls.append(url)
         return [{"id": "1", "text": "hot tweet", "time": "2026-07-04T12:00:00.000Z", "author": "U"}]
 
@@ -304,7 +304,7 @@ def test_search_no_fallback_without_since_until(monkeypatch):
 
     calls = []
 
-    def fake_fetch(url, limit):
+    def fake_fetch(url, limit, scroll_times=0):
         calls.append(url)
         return []
 

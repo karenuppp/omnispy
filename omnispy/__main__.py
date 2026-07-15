@@ -7,7 +7,9 @@ Usage:
     python -m omnispy search 香港 --until 2026-07-06 --limit 10
 """
 
+import json
 import time
+from pathlib import Path
 
 import typer
 
@@ -52,6 +54,72 @@ def search(
         if t.get("url"):
             typer.echo(f"     {t['url']}")
         typer.echo()
+
+    return results
+
+
+@app.command()
+def get_cookies():
+    """Launch a browser to log into X and save cookies to .env."""
+    from omnispy.platforms.x.get_cookies import fetch_x_cookies, write_cookies_to_env
+
+    try:
+        cookies = fetch_x_cookies()
+    except RuntimeError as e:
+        typer.echo(f"错误: {e}", err=True)
+        raise typer.Exit(code=1)
+
+    env_path = write_cookies_to_env(cookies)
+    typer.echo(f"✅ Cookies 已保存到 {env_path}")
+    typer.echo("运行以下命令验证：")
+    typer.echo("  uv run python -m omnispy timeline \"test\" --limit 1")
+
+
+@app.command()
+def timeline(
+    handles: str = typer.Argument(..., help="X usernames, comma-separated, without @."),
+    limit: int = typer.Option(5, help="Max tweets per user."),
+    workers: int = typer.Option(3, help="Parallel browser instances for multi-user fetch."),
+    output: Path = typer.Option(None, help="Output JSON file path (e.g. results.json)."),
+):
+    """Fetch the most recent posts from one or more X user timelines."""
+    user_list = [h.strip().lstrip("@") for h in handles.split(",") if h.strip()]
+    if not user_list:
+        typer.echo("错误：未提供有效的用户名。", err=True)
+        return []
+
+    from server.service import run_manual_search
+
+    t0 = time.time()
+    results = run_manual_search("user", users=",".join(user_list), limit=limit, max_workers=workers)
+    elapsed = time.time() - t0
+
+    # Per-user status
+    ok_users: set[str] = set()
+    for t in results:
+        h = t.get("handle") or ""
+        if h:
+            ok_users.add(h)
+    for handle in user_list:
+        if handle in ok_users:
+            count = sum(1 for t in results if t.get("handle") == handle)
+            typer.echo(f"  ✅ @{handle}: {count} 条", err=True)
+        else:
+            typer.echo(f"  ⚠️ @{handle}: 未获取到推文（可能用户不存在/无推文/抓取失败）", err=True)
+
+    typer.echo(f"\n耗时 {elapsed:.0f}s, 共 {len(results)} 条推文\n", err=True)
+    for i, t in enumerate(results, 1):
+        h = t.get("handle", "")
+        label = f"@{h}" if h else t.get("author", "?")
+        typer.echo(f"{i:>3}. {label}  {t.get('time', '?')}")
+        typer.echo(f"     {t['text'][:120]}{'…' if len(t['text']) > 120 else ''}")
+        if t.get("url"):
+            typer.echo(f"     {t['url']}")
+        typer.echo()
+
+    if output:
+        output.write_text(json.dumps(results, ensure_ascii=False, indent=2))
+        typer.echo(f"✅ 结果已保存到 {output}\n", err=True)
 
     return results
 

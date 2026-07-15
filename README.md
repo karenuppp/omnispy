@@ -2,68 +2,50 @@
 
 Multi-platform social media scraping agent. Built on [Scrapling] (crawl layer) and [LightAgent] (agent layer).
 
-Current scope (MVP): X (Twitter) user timeline scraping via `python -m omnispy "..."` or FastAPI.
+Current scope: X (Twitter) user timeline scraping and keyword search.
 
-[Scrapling]: https://github.com/D4Vinci/Scrapling
-[LightAgent]: https://github.com/wanxingai/LightAgent
+## Features
 
-## Status
+- **Timeline fetch** — batch pull latest tweets from multiple X users, with parallel crawling
+- **Keyword search** — multi-route search (top/live/hashtag variants), concurrent dispatch
+- **API-first** — intercepts X's internal GraphQL API for precise tweet count, falls back to DOM parsing
+- **CLI + Web UI** — command-line tool and Vue 3 frontend
+- **Scheduled tasks** — APScheduler integration for recurring searches
+- **Cookie tool** — interactive browser-based X cookie fetcher (no local browser contamination)
 
-MVP skeleton complete (plan `001-x-mvp` done). CLI + FastAPI + crawler + agent
-all wired up. Real X crawling requires a valid browser cookie in `.env` and a
-running LM Studio; the test suite uses offline fixtures and stubbed agents.
+## Quick start
 
-What's done:
+```bash
+# Install
+uv sync && uv run scrapling install
 
-- `platforms/x/` — StealthyFetcher-based scraper + CSS selectors + LightAgent tool wrapper
-- `agents/` — `LightSwarm` router + `x_agent` specialist
-- `omnispy.api` — `POST /query` + `GET /healthz`
-- `python -m omnispy "<query>"` — CLI entry
+# Fetch X cookies (one-time)
+uv run python -m omnispy get-cookies
 
-What's not (deliberately deferred, see plan for details): memory layer, login
-rotation, other platforms, Docker deployment.
+# Pull latest 5 tweets from multiple users
+uv run python -m omnispy timeline "elonmusk,wsxyza" --limit 5 --workers 5 --output results.json
+
+# Keyword search
+uv run python -m omnispy search "AI" --limit 20
+
+# Start web UI
+uv run uvicorn server.app:app --port 8000
+```
 
 ## Setup
 
-Prerequisites:
+1. Run `uv run python -m omnispy get-cookies` — opens an isolated Chromium window to log into X
+2. (Optional) Set `LLM_BASE_URL` / `LLM_MODEL` in `.env` for agent mode
 
-- Python ≥ 3.10
-- [uv](https://docs.astral.sh/uv/) (dependency manager)
-- [LM Studio](https://lmstudio.ai/) running locally on :1234 with `gemma-4-e4b` loaded
-  (enable "Local Server" in the LM Studio "Developer" tab to expose the
-  OpenAI-compatible `/v1` endpoint)
-- An X (Twitter) browser session — export cookies as a single string and put in `.env`
+## Project layout
 
-```bash
-uv sync                              # install deps
-cp .env.example .env                 # then edit .env with your cookie + model name
-uv run scrapling install             # one-time browser install for Scrapling
+```
+omnispy/
+  platforms/x/    → spider.py (crawl), selectors.py, tools.py, get_cookies.py
+  agents/         → x_agent.py, router.py (LightSwarm)
+server/           → FastAPI + Vue 3 frontend
+tests/            → offline fixture-based tests
 ```
 
-## Usage
-
-CLI:
-
-```bash
-uv run python -m omnispy "抓 @elonmusk 最近 5 条推文"
-```
-
-HTTP server:
-
-```bash
-uv run uvicorn omnispy.api:app --reload --port 8000
-
-curl -X POST http://127.0.0.1:8000/query \
-  -H 'Content-Type: application/json' \
-  -d '{"q": "抓 @elonmusk 最近 5 条推文"}'
-```
-
-## Development
-
-```bash
-uv run pytest                        # run all tests
-uv run pytest tests/test_x_spider.py # single test file
-uv run pytest -k selectors           # match by name
-```
-
-See [CLAUDE.md](CLAUDE.md) for architecture and contributor guidance.
+[Scrapling]: https://github.com/D4Vinci/Scrapling
+[LightAgent]: https://github.com/wanxingai/LightAgent

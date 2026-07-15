@@ -108,6 +108,7 @@ def run_manual_search(
     keywords: str = "",
     users: str = "",
     limit: int = 20,
+    max_workers: int = 3,
     db=None,
 ) -> list[dict]:
     """Execute a one-off manual search.
@@ -117,6 +118,7 @@ def run_manual_search(
         keywords:   Comma-separated keywords (for keyword search).
         users:      Comma-separated usernames (for user search).
         limit:      Max tweets per keyword/user, not total.
+        max_workers: Max parallel browser instances for user timeline fetch.
         db:         Database instance for logging (optional, graceful fallback).
 
     Returns:
@@ -142,13 +144,26 @@ def run_manual_search(
             return []
         all_tweets: list[dict] = []
         seen: set[str] = set()
-        for handle in user_list:
-            results = fetch_user_tweets(handle, limit=limit)
-            for t in results:
-                tid = t.get("id")
-                if tid and tid not in seen:
-                    seen.add(tid)
-                    all_tweets.append(t)
+
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {
+                pool.submit(fetch_user_tweets, handle, limit): handle
+                for handle in user_list
+            }
+            for future in concurrent.futures.as_completed(futures):
+                handle = futures[future]
+                try:
+                    results = future.result()
+                    for t in results:
+                        tid = t.get("id")
+                        if tid and tid not in seen:
+                            t["handle"] = handle  # add handle for traceability
+                            seen.add(tid)
+                            all_tweets.append(t)
+                except Exception:
+                    pass  # individual user failure is non-fatal
 
         all_tweets.sort(key=lambda t: t.get("time", ""), reverse=True)
 
@@ -195,13 +210,26 @@ def run_task(task_id: int, db=None) -> list[dict]:
 
             user_tweets: list[dict] = []
             seen_users: set[str] = set()
-            for handle in user_list:
-                results = fetch_user_tweets(handle, limit=1)
-                for t in results:
-                    tid = t.get("id")
-                    if tid and tid not in seen_users:
-                        seen_users.add(tid)
-                        user_tweets.append(t)
+
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+                futures = {
+                    pool.submit(fetch_user_tweets, handle, 1): handle
+                    for handle in user_list
+                }
+                for future in concurrent.futures.as_completed(futures):
+                    handle = futures[future]
+                    try:
+                        results = future.result()
+                        for t in results:
+                            tid = t.get("id")
+                            if tid and tid not in seen_users:
+                                t["handle"] = handle
+                                seen_users.add(tid)
+                                user_tweets.append(t)
+                    except Exception:
+                        pass
 
             kw_tweets = _multi_search(kw_list, since=_today_since(), limit_per_route=20)
 

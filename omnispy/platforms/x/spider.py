@@ -8,6 +8,9 @@ must be testable without an LLM in the loop.
 """
 
 import asyncio
+import json
+import math
+from datetime import datetime
 from urllib.parse import quote
 
 from scrapling.fetchers import StealthySession
@@ -47,7 +50,6 @@ def _parse_cookies(cookie_str: str) -> list[dict]:
             })
     return out
 
-from datetime import datetime
 
 from .selectors import (
     TWEET_ARTICLE_V1,
@@ -88,15 +90,17 @@ def fetch_user_tweets(handle: str, limit: int = 10) -> list[dict]:
     except RuntimeError:
         running_loop = None  # no running loop — ideal for Patchright
 
+    scroll_times = max(1, math.ceil(limit / 3))
+
     if running_loop is not None:
         # Patchright sync_api will refuse to start inside a running loop.
         # Defer the whole fetch to a thread that has no running loop.
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(_fetch_sync, url, limit)
+            future = pool.submit(_fetch_sync, url, limit, scroll_times)
             return future.result()
 
-    return _fetch_sync(url, limit)
+    return _fetch_sync(url, limit, scroll_times)
 
 
 def search_tweets(
@@ -107,6 +111,7 @@ def search_tweets(
     limit: int = 20,
     since: str | None = None,
     until: str | None = None,
+    scroll_times: int | None = None,
 ) -> list[dict]:
     """Search X (Twitter) for tweets matching keywords and/or from specific users.
 
@@ -118,6 +123,8 @@ def search_tweets(
         limit:      Maximum tweets to return (up to ~20, page-load dependent).
         since:      Only tweets from this date onwards (YYYY-MM-DD).
         until:      Only tweets before this date (YYYY-MM-DD).
+        scroll_times: How many times to scroll for more results.
+            Auto-calculated from limit when ``None`` (default).
 
     Returns:
         A list of dicts with keys: ``id``, ``text``, ``time``, ``author``.
@@ -125,6 +132,11 @@ def search_tweets(
     """
     if not keywords and not from_users and not query:
         return []
+
+    if scroll_times is None:
+        # Generous upper bound — _make_scroll_action will exit early once
+        # enough articles are in the DOM via wait_for_function + count check.
+        scroll_times = max(1, math.ceil(limit / 3))
 
     q = _build_search_query(
         keywords=keywords,
@@ -136,7 +148,7 @@ def search_tweets(
     sort_param = "top" if sort == "top" else "live"
     url = f"https://x.com/search?q={quote(q)}&f={sort_param}&src=typed_query"
 
-    result = _do_fetch(url, limit)
+    result = _do_fetch(url, limit, scroll_times)
 
     # Fallback: server-side returned empty -> retry without date operators
     # and client-filter instead.
@@ -149,13 +161,13 @@ def search_tweets(
             until=None,
         )
         url_fallback = f"https://x.com/search?q={quote(q_fallback)}&f={sort_param}&src=typed_query"
-        result = _do_fetch(url_fallback, limit)
+        result = _do_fetch(url_fallback, limit, scroll_times)
         result = _filter_tweets_by_time(result, since, until)
 
     return result[:limit]
 
 
-def _do_fetch(url: str, limit: int) -> list[dict]:
+def _do_fetch(url: str, limit: int, scroll_times: int = 0) -> list[dict]:
     """Internal: run the fetch with StealthySession, handling asyncio loop
     detection. Returns parsed tweet list (may be empty)."""
     try:
@@ -167,15 +179,242 @@ def _do_fetch(url: str, limit: int) -> list[dict]:
         import concurrent.futures
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(_fetch_sync, url, limit)
+            future = pool.submit(_fetch_sync, url, limit, scroll_times)
             return future.result()
 
-    return _fetch_sync(url, limit)
+    return _fetch_sync(url, limit, scroll_times)
 
 
-def _fetch_sync(url: str, limit: int) -> list[dict]:
+def _make_scroll_action(max_scrolls: int, target_count: int, settle_time: int = 1000):
+    """Create a ``page_action`` that scrolls until enough tweets are in DOM.
+
+    Uses Playwright's ``wait_for_function`` (MutationObserver-based polling)
+    to detect when new ``<article>`` elements appear, instead of guessing
+    with fixed delays.
+
+    1. Waits for React to render initial tweets (``article > 0``, 15 s timeout).
+    2. Repeatedly scrolls to the bottom, waiting each time for the article
+       count to increase (8 s timeout per scroll).
+    3. Exits early when ``target_count`` articles are in the DOM.
+
+    Args:
+        max_scrolls:  Hard cap on scroll attempts (safety against infinite loop).
+        target_count: Stop once this many articles are in the DOM.
+        settle_time:  Extra ms to wait after count increase before next check.
+
+    Returns:
+        A callable for ``StealthySession.fetch(page_action=...)``.
+    """
+
+    def _scroll(page):
+        # 1. Wait for React to render at least one tweet
+        try:
+            page.wait_for_function(
+                "document.querySelectorAll('article').length > 0",
+                timeout=15000,
+            )
+        except Exception:
+            pass  # no initial tweets — X may be rate-limiting or empty
+
+        # 2. Scroll + wait for growth, exit early at target.
+        # Track consecutive failures — 3 in a row with no new articles means
+        # X has no more content, no point continuing to timeout.
+        consecutive_failures = 0
+        for _ in range(max_scrolls):
+            count = page.evaluate("document.querySelectorAll('article').length")
+            if count >= target_count:
+                break
+
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+
+            try:
+                page.wait_for_function(
+                    f"document.querySelectorAll('article').length > {count}",
+                    timeout=8000,
+                )
+                page.wait_for_timeout(settle_time)
+                consecutive_failures = 0
+            except Exception:
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    break  # 3 strikes — no more content from X
+                continue  # try next scroll
+
+    return _scroll
+
+
+# ---------------------------------------------------------------------------
+# X GraphQL API intercept helpers  (API-first, DOM fallback)
+# ---------------------------------------------------------------------------
+
+def _extract_api_entries(body: dict) -> list[dict]:
+    """Extract raw entry dicts from an X GraphQL ``UserTweets`` response.
+
+    Returns entries for actual tweets (skips cursor, who-to-follow, etc.).
+    Shared with the DOM fallback — this is only used when the API response
+        is available.
+    """
+    try:
+        instructions = body["data"]["user"]["result"]["timeline"]["timeline"]["instructions"]
+    except (KeyError, TypeError):
+        return []
+
+    entries: list[dict] = []
+    for instr in instructions:
+        t = instr.get("type")
+        if t == "TimelinePinEntry":
+            e = instr.get("entry")
+            if e:
+                entries.append(e)
+        elif t == "TimelineAddEntries":
+            for e in instr.get("entries", []):
+                eid = e.get("entryId", "")
+                if eid and not eid.startswith("cursor-") and not eid.startswith("who-to-follow-"):
+                    entries.append(e)
+    return entries
+
+
+def _parse_api_tweet(entry: dict) -> dict | None:
+    """Parse a single raw API entry into our tweet dict.
+
+    Returns ``None`` when the entry does not contain a valid tweet (skipped
+        silently — same as the DOM filter for image-only / broken tweets).
+    """
+    eid = entry.get("entryId", "")
+    if not eid:
+        return None
+
+    # --- drill into the result object ------------------------------------
+    try:
+        ic = entry["content"]["itemContent"]
+        result = ic.get("tweet_results", {}).get("result", {})
+    except (KeyError, TypeError):
+        return None
+
+    # Unwrap TweetWithVisibilityResults
+    if result.get("__typename") == "TweetWithVisibilityResults":
+        result = result.get("tweet", result)
+
+    rest_id = result.get("rest_id")
+    if not rest_id:
+        return None
+
+    legacy = result.get("legacy", {})
+    text = legacy.get("full_text", "")
+    if not text:
+        return None
+
+    # --- author -----------------------------------------------------------
+    user = result.get("core", {}).get("user_results", {}).get("result", {})
+    author = user.get("core", {}).get("name", "")
+    handle = user.get("legacy", {}).get("screen_name", "")
+
+    # --- time -------------------------------------------------------------
+    created_at = legacy.get("created_at", "")
+    time_iso = created_at
+    if created_at:
+        try:
+            dt = datetime.strptime(created_at, "%a %b %d %H:%M:%S %z %Y")
+            time_iso = dt.isoformat()
+        except ValueError:
+            pass
+
+    return {
+        "id": rest_id,
+        "text": text,
+        "time": time_iso,
+        "author": author or handle,
+        "handle": handle or author,
+        "like_count": legacy.get("favorite_count"),
+        "reply_count": legacy.get("reply_count"),
+        "retweet_count": legacy.get("retweet_count"),
+        "view_count": result.get("views", {}).get("count"),
+    }
+
+
+def _parse_api_tweets(raw_entries: list[dict]) -> list[dict]:
+    """Batch-parse API entries and deduplicate by ``id``."""
+    seen: set[str] = set()
+    out: list[dict] = []
+    for e in raw_entries:
+        t = _parse_api_tweet(e)
+        if t and t["id"] not in seen:
+            seen.add(t["id"])
+            out.append(t)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Fetch implementation
+# ---------------------------------------------------------------------------
+
+
+def _fetch_sync(url: str, limit: int, scroll_times: int = 0) -> list[dict]:
+    """Fetch a page, trying X GraphQL API first, falling back to DOM parsing.
+
+    1. Sets up a ``response`` listener for the ``UserTweets`` GraphQL endpoint
+       *before* the page navigates (so the initial API call is captured).
+    2. Scrolls normally (counting ``<article>`` elements for early exit).
+    3. If API data is available → parse from JSON (precise count, richer data).
+    4. If API data is insufficient → supplement with DOM parsing.
+    5. If no API data at all → pure DOM fallback (current original behaviour).
+    """
+    api_entries: list[dict] = []
+
+    def _page_setup(page):
+        """Set short timeout + listen for X GraphQL UserTweets responses."""
+        page.set_default_timeout(15_000)
+
+        def _on_api_response(response):
+            if "/UserTweets" in response.url:
+                try:
+                    raw = json.loads(response.body())
+                    entries = _extract_api_entries(raw)
+                    if entries:
+                        api_entries.extend(entries)
+                except Exception:
+                    pass
+
+        page.on("response", _on_api_response)
+
+    # Build the scroll action (unchanged)
+    page_action = None
+    if scroll_times > 0:
+        max_scrolls = scroll_times + 5
+        page_action = _make_scroll_action(max_scrolls, limit)
+
     with StealthySession(headless=True, cookies=_parse_cookies(settings.x_cookie)) as session:
-        page = session.fetch(url, network_idle=True, timeout=30000, disable_resources=True)
+        page = session.fetch(
+            url,
+            network_idle=True,
+            timeout=90000,
+            disable_resources=True,
+            page_setup=_page_setup,
+            page_action=page_action,
+            wait=3000 if scroll_times > 0 else 0,
+        )
+
+    # --- API mode -----------------------------------------------------------
+    if api_entries:
+        api_tweets = _parse_api_tweets(api_entries)
+        if api_tweets:
+            # If API got enough, return it directly.
+            if len(api_tweets) >= limit:
+                return api_tweets[:limit]
+
+            # Otherwise supplement with DOM tweets (dedup by id).
+            dom_tweets = _parse_tweets(page, limit)
+            seen = {t["id"] for t in api_tweets if t.get("id")}
+            for t in dom_tweets:
+                tid = t.get("id")
+                if tid and tid not in seen:
+                    seen.add(tid)
+                    api_tweets.append(t)
+                    if len(api_tweets) >= limit:
+                        break
+            return api_tweets[:limit]
+
+    # --- DOM fallback --------------------------------------------------------
     return _parse_tweets(page, limit)
 
 
